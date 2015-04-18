@@ -1,25 +1,47 @@
 #!/bin/bash
-count=1
-netList=$(ss -n -t | grep "ESTAB" | sed -n 's/.*\(\(\(^\| \)[0-9]\{1,3\}\.\)\{1\}\([0-9]\{1,3\}\.\)\{2\}[0-9]\{1,3\}\).*/\1/gp')
-#netList=$(ss -n -t | sed -n 's/.*\(\(\(^\| \)[0-9]\{1,3\}\.\)\{1\}\([0-9]\{1,3\}\.\)\{2\}[0-9]\{1,3\}\).*/\1/gp')
 
-if [ $(echo -n $netList | wc -c) -lt 7 ]; then
-	echo "No connections to speak of."
-	exit 0
-fi
+#==============================================================================
+main() {
+  count=1
+  
+  # Prefer ss
+  if [ -f "$(which ss 2>/dev/null)" ]  ; then
+    declare -xr netstat="$(which ss) -n -t"
+  elif [ -f "$(which netstat 2>/dev/null)" ] ; then
+    declare -xr netstat="$(which netstat) -n -t"
+    echo "ss not found. Using $netstat" > /dev/stderr
+  fi
+  
+  # Is this the way to shorten a long string?
+  declare -x grepstring='s/.*\(\(\(^\| \)[0-9]\{1,3\}\.\)\{1\}\([0-9]\{1,3\}\.'
+  grepstring=$grepstring'\)\{2\}[0-9]\{1,3\}\).*/\1/gp'
+  
+  netList=$($netstat | grep "ESTAB" | sed -n "$grepstring")
 
-for x in $netList; do 
+  if [ $(echo -n $netList | wc -c) -lt 7 ]; then
+    echo "No connections to speak of."
+    exit 0
+  fi
+
+  for x in $netList; do 
     if [ ! $x = "127.0.0.1" ]; then
-        printf "%3d.) %15s -> " "$count" "$x"
-        resWhois=$(whois "$x" 2> /dev/null)
-        #resHost=$(host "$x" 2> /dev/null)
-        if [ "$(echo "$resWhois" | grep -c 'OrgName')" -eq 0 ]; then
-            printf "host: %s\n" "$(host $x 2> /dev/null | tail -1 | awk '{print $NF}')"
-        else
-            printf "whois: %s\n" "$(echo -n "$resWhois" | awk -F \: '/OrgName/ {gsub(/^[ \t]+/, "", $2); print $2}')"
-        fi
-        count=$((count + 1))
+      printf "%3d.) %15s -> " "$count" "$x"
+      resWhois=$(whois "$x" 2> /dev/null)
+      #resHost=$(host "$x" 2> /dev/null)
+      if [ "$(echo "$resWhois" | grep -c 'OrgName')" -eq 0 ]; then
+        printf "host: %s\n" "$(host $x 2> /dev/null \
+                               | tail -1 \
+                               | awk '{print $NF}')"
+      else
+        printf "whois: %s\n" "$(echo -n "$resWhois" \
+                                | awk -F \: '/OrgName/ \
+                                {gsub(/^[ \t]+/, "", $2); print $2}')"
+      fi
+      count=$((count + 1))
     fi
-done
+  done
+  
+  exit 0
+}
 
-exit 0
+main
